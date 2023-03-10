@@ -12,7 +12,9 @@ declare -a labs=("container-create" "container-rootless" "container-review" \
 
 for lab in "${labs[@]}"
 do
-   lab $lab start && lab $lab finish
+   echo "starting lab $lab"
+   lab $lab start #&& lab $lab finish
+   sudo rm -rf /home/student/local/mysql 
 done
 
 # lab container-create start
