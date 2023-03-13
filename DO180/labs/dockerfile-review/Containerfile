@@ -1,19 +1,21 @@
-FROM <base image>
+FROM ubi8/ubi:8.5
 
-MAINTAINER username <username@example.com>
+MAINTAINER Joseph Krenek <joseph.krenek@us.ibm.com>
 
-ENV PORT <port>
+ENV PORT 8080 
 
-RUN <provide yum commands in a single line>
-
-RUN sed -ri -e "/^Listen 80/c\Listen ${PORT}" /etc/httpd/conf/httpd.conf && \
+RUN yum install -y httpd && \
+    sed -ri -e "/^Listen 80/c\Listen ${PORT}" /etc/httpd/conf/httpd.conf && \
     chown -R apache:apache /etc/httpd/logs/ && \
     chown -R apache:apache /run/httpd/
 
 USER apache
 
 # Expose the custom port that you provided in the ENV var
+EXPOSE $PORT
 
 # Copy all files under src/ folder to Apache DocumentRoot (/var/www/html) 
+COPY ./src /var/www/html
 
 # Start Apache in the foreground
+CMD ["httpd", "-D", "FOREGROUND"]
