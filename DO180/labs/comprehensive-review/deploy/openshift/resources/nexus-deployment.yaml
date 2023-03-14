@@ -44,7 +44,7 @@ items:
       spec:
         containers:
         - env: []
-          image: quay.io/$RHT_OCP4_QUAY_USER/nexus:latest
+          image: docker.io/jjkrenek/do180-nexus:latest
           imagePullPolicy: Always
           livenessProbe:
             failureThreshold: 10

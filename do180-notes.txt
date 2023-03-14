@@ -1,0 +1,172 @@
+
+#container - run a mysql pod
+podman run --name mysql-basic -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55 -d registry.redhat.io/rhel8/mysql-80:1
+CREATE TABLE Projects (id int NOT NULL, name varchar(255) DEFAULT NULL, code varchar(255) DEFAULT NULL, PRIMARY KEY (id));
+INSERT INTO Projects (id, name, code) VALUES (1,'DevOps','DO180');
+SELECT * FROM Projects;
+
+#container permissions - run as root vs regular user
+sudo podman run --rm --name asroot -it registry.access.redhat.com/ubi8:latest /bin/bash
+podman run --rm --name asuser -it registry.access.redhat.com/ubi8:latest /bin/bash
+
+#container lifecycle/environment - run mysql - first one shows when not passing required env vars
+podman run --name mysql-db registry.redhat.io/rhel8/mysql-80:1
+podman run --name mysql -d -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55 registry.redhat.io/rhel8/mysql-80:1
+podman cp ~/DO180-apps/DO180/labs/manage-lifecycle/db.sql mysql:/
+podman exec mysql /bin/bash -c 'mysql -uuser1 -pmypa55 items < /db.sql'
+podman run --name mysql-2 -it registry.redhat.io/rhel8/mysql-80:1 /bin/bash
+podman exec mysql /bin/bash -c 'mysql -uuser1 -pmypa55 -e "select * from items.Projects;"'
+
+#container - storage
+sudo semanage fcontext -a -t container_file_t '/home/jjkrenek/local/mysql(/.*)?'
+sudo restorecon -R /home/jjkrenek/local/mysql
+ls -ldZ /home/jjkrenek/local/mysql
+podman unshare chown 27:27 /home/jjkrenek/local/mysql
+podman pull registry.redhat.io/rhel8/mysql-80:1
+podman run --name persist-db -d -v /home/jjkrenek/local/mysql:/var/lib/mysql/data -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55 registry.redhat.io/rhel8/mysql-80:1
+
+#container - ports
+podman run --name mysqldb-port -d -v /home/jjkrenek/local/mysql:/var/lib/mysql/data -p 13306:3306 -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55  registry.redhat.io/rhel8/mysql-80:1
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P13306 items < /home/jjkrenek/DO180-apps/DO180/labs/manage-networking/db.sql
+podman exec -it mysqldb-port mysql -uroot items -e "SELECT * FROM Item"
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P13306 items -e "SELECT * FROM Item"
+
+#lab - containers
+rm -rf /home/jjkrenek/local
+mkdir -p /home/jjkrenek/local/mysql
+ls -ldZ /home/jjkrenek/local/mysql
+sudo semanage fcontext -a -t container_file_t '/home/jjkrenek/local/mysql(/.*)?'
+sudo restorecon -R /home/jjkrenek/local/mysql
+ls -ldZ /home/jjkrenek/local/mysql
+podman unshare chown 27:27 /home/jjkrenek/local/mysql
+podman run --name mysql-1 -p 13306:3306 -d -v /home/jjkrenek/local/mysql:/var/lib/mysql/data -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55 registry.redhat.io/rhel8/mysql-80:1
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P13306 items < /home/jjkrenek/DO180-apps/DO180/labs/manage-review/db.sql
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P13306 items -e "SELECT * FROM Item"
+podman stop mysql-1
+podman run --name mysql-2 -p 13306:3306 -d -v /home/jjkrenek/local/mysql:/var/lib/mysql/data -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_DATABASE=items -e MYSQL_ROOT_PASSWORD=r00tpa55  registry.redhat.io/rhel8/mysql-80:1
+mysql -h 127.0.0.1 -P13306 -uuser1 -pmypa55 items -e "SELECT * FROM Item"
+
+#containers - publishing images
+podman run -d --name official-httpd -p 8080:80 quay.io/redhattraining/httpd-parent
+podman exec official-httpd /bin/bash -c 'echo "DO180 Page" > /var/www/html/do180.html'
+podman stop official-httpd
+podman commit -a "Joseph Krenek" official-httpd do180-custom-httpd
+podman tag do180-custom-httpd docker.io/jjkrenek/do180-custom-httpd:v1.0
+podman push docker.io/jjkrenek/do180-custom-httpd:v1.0
+podman pull -q docker.io/jjkrenek/do180-custom-httpd:v1.0
+podman rm official-httpd
+podman run -d --name official-httpd -p 8080:80 docker.io/jjkrenek/do180-custom-httpd:v1.0
+
+#lab - manage images
+podman run -d --name official-nginx -p 8080:80 quay.io/redhattraining/nginx:1.17
+podman exec official-nginx /bin/bash -c 'echo "DO180" > /usr/share/nginx/html/index.html'
+podman stop official-nginx
+podman commit -a "Joseph Krenek" official-nginx do180-mynginx:v1.0-SNAPSHOT
+podman run -d --name official-nginx-dev -p 8080:80 do180-mynginx:v1.0-SNAPSHOT
+podman exec official-nginx-dev /bin/bash -c 'echo "DO180 Page" > /usr/share/nginx/html/index.html'
+podman stop official-nginx-dev
+podman commit -a "Joseph Krenek" official-nginx-dev do180-mynginx:v1.0
+podman tag do180-mynginx:v1.0 docker.io/jjkrenek/do180-mynginx:v1.0
+
+#images - dockerfile
+podman build --layers=false -t do180-apache .
+podman run --name lab-apache -d -p 8080:80 do180-apache
+
+#lab - dockerfile
+podman build --layers=false -t do180-custom-apache .
+podman run --name containerfile -d -p 8080:8080 do180-custom-apache
+
+#openshift deploy
+oc new-project jjkrenek-mysql-openshift
+oc new-app --template=mysql-persistent -p MYSQL_USER=user1 -p MYSQL_PASSWORD=mypa55 -p MYSQL_DATABASE=testdb -p MYSQL_ROOT_PASSWORD=r00tpa55 -p VOLUME_CAPACITY=10Gi
+oc port-forward mysql-1-5vfn4 3306:3306
+mysql -uuser1 -pmypa55 --protocol tcp -h localhost
+
+#openshift routes
+oc new-project jjkrenek-route 
+oc new-app --image=quay.io/redhattraining/php-hello-dockerfile --name php-helloworld
+oc expose service php-helloworld
+oc delete route php-helloworld 
+oc expose service php-helloworld --name=jjkrenek-xyz
+
+#openshift s2i
+oc new-project jjkrenek-s2i
+oc new-app php:7.3 --name=php-helloworld https://github.com/jjkrenek/DO180-apps#labs-working --context-dir php-helloworld
+oc start-build php-helloworld 
+
+#lab - openshift
+oc new-project jjkrenek-ocp 
+oc new-app php:7.3 --name temps  https://github.com/RedHatTraining/DO180-apps --context-dir temps
+
+
+#multi-container podman
+podman run -d --name mysql -e MYSQL_DATABASE=items -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -e MYSQL_ROOT_PASSWORD=r00tpa55 -v $PWD/work/data:/var/lib/mysql/data -p 30306:3306 registry.redhat.io/rhel8/mysql-80:1
+podman run -d --name todoapi -e MYSQL_DATABASE=items -e MYSQL_USER=user1 -e MYSQL_PASSWORD=mypa55 -p 30080:30080 do180/todonodejs
+mysql -uuser1 -h 10.11.38.78 -pmypa55 -P30306 items < /home/jjkrenek/DO180-apps/DO180/labs/multicontainer-design/deploy/nodejs/networked/db.sql
+podman exec -it todoapi env
+curl -w "\n" http://127.0.0.1:30080/todo/api/items/1
+
+#multi-container openshift
+oc new-project jjkrenek-application
+cd ~/DO180-apps/DO180/labs/multicontainer-application
+oc create -f todo-app.yml
+oc port-forward mysql 3306:3306
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P3306 items < db.sql
+oc expose service todoapi
+oc status | grep -o "http:.*com"
+curl -w "\n" $(oc status | grep -o "http:.*com")/todo/api/items/1
+navigate to http://todoapi-jjkrenek-application.apps.na410r.prod.ole.redhat.com/todo/
+
+#multi-container template
+oc new-project jjkrenek-template
+cd ~/DO180-apps/DO180/labs/multicontainer-openshift
+oc process -f todo-template.json | oc create -f -
+mysql -uuser1 -h 127.0.0.1 -pmypa55 -P3306 items < db.sql
+oc expose service todoapi
+curl -w "\n" $(oc status | grep -o "http:.*com")/todo/api/items/1
+
+#lab - multi-container
+oc new-project jjkrenek-deploy
+cd ~/DO180-apps/DO180/labs/multicontainer-review/images/mysql
+podman build --layers=false -t docker.io/jjkrenek/do180-mysql-80-rhel8 .
+podman push docker.io/jjkrenek/do180-mysql-80-rhel8
+cd ../quote-php
+podman build --layers=false -t docker.io/jjkrenek/do180-quote-php .
+podman push docker.io/jjkrenek/do180-quote-php
+cd ../..
+oc apply -f quote-php-template.json
+oc process quote-php-persistent -p RHT_OCP4_QUAY_USER=jjkrenek | oc create -f -
+oc expose service quote-php
+
+
+#troubleshooting podman
+podman build -t troubleshoot-container .
+podman run --name troubleshoot-container -d -p 10080:80 troubleshoot-container
+podman logs troubleshoot-container
+curl http://127.0.0.1:10080
+podman logs troubleshoot-container
+
+#troubleshoot container
+cd ~/DO180-apps/DO180/labs/troubleshooting-container
+podman build -t troubleshoot-container .
+podman run --name troubleshoot-container -d -p 10080:80 troubleshoot-container:latest
+
+#lab - troubleshooting
+oc new-project jjkrenek-nodejs-app
+oc new-app --name nodejs-dev https://github.com/jjkrenek/DO180-apps#labs-working -i nodejs:16-ubi8 --context-dir=nodejs-app --build-env npm_config_registry=http://nexus-common.apps.na410r.prod.ole.redhat.com/repository/nodejs
+oc start-build bc/nodejs-dev 
+
+
+#lab - comprehensive review
+cd ~/DO180-apps/DO180/labs/comprehensive-review/image
+podman build --layers=false -t nexus .
+
+../deploy/local/run-persistent.sh
+podman stop --all
+
+podman tag nexus:latest docker.io/jjkrenek/nexus:latest
+podman push docker.io/jjkrenek/nexus:latest
+oc new-project jjkrenek-review
+
+cd deploy/openshift/resources
+oc create -f nexus-deployment.yaml

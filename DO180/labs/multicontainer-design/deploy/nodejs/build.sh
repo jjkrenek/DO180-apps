@@ -9,4 +9,4 @@ rm build/*.sh
 sudo rm -rf {linked,kubernetes}/work
 
 source /usr/local/etc/ocp4.config
-podman build --layers=false -t do180/todonodejs --build-arg NEXUS_BASE_URL=nexus-common-apps.na410r.prod.ole.redhat .
+podman build --layers=false -t do180/todonodejs --build-arg NEXUS_BASE_URL=nexus-common.apps.na410r.prod.ole.redhat.com .
